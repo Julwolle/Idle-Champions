@@ -1,4 +1,4 @@
-#Requires AutoHotkey 1.1.33+ <1.2
+#Requires AutoHotkey 1.1.37+ <1.2
 #SingleInstance force
 ;put together with the help from many different people. thanks for all the help.
 #HotkeyInterval 1000  ; The default value is 2000 (milliseconds).
@@ -9,7 +9,7 @@
 ;Script Optimization
 ;=======================
 SetWorkingDir %A_ScriptDir%
-SetWinDelay, 33 ; Sets the delay that will occur after each windowing command, such as WinActivate. (Default is 100)
+SetWinDelay, 32 ; Sets the delay that will occur after each windowing command, such as WinActivate. (Default is 100)
 SetControlDelay, 0 ; Sets the delay that will occur after each control-modifying command. -1 for no delay, 0 for smallest possible delay. The default delay is 20.
 ;SetKeyDelay, 0 ; Sets the delay that will occur after each keystroke sent by Send or ControlSend. [SetKeyDelay , Delay, PressDuration, Play]
 SetBatchLines, -1 ; How fast a script will run (affects CPU utilization).(Default setting is 10ms - prevent the script from using any more than 50% of an idle CPU's time.
@@ -22,7 +22,7 @@ CoordMode, Mouse, Client
 ;Modron Automation Gem Farming Script
 GetScriptHubVersion()
 {
-    return "v4.1.1, 2025-09-18" ; Must be line 25 for version checking to work.
+    return "v4.4.3, 2025-10-19" ; Must be line 25 for version checking to work.
 }
 
 ;class and methods for parsing JSON (User details sent back from a server call)
@@ -50,6 +50,7 @@ global g_GameButton := A_LineFile . "\..\Images\idledragons-25x25.png"
 global g_MacroButton := A_LineFile . "\..\Images\macro-100x100.png"
 global g_MouseTooltips := {}
 global g_Miniscripts := {}
+global g_globalTempSettingsFiles := {}
 
 ;Load themes
 GUIFunctions.LoadTheme()
@@ -109,7 +110,7 @@ Gui, ICScriptHub:Add, Tab3, x5 y32 w%g_TabControlWidth%+40 h%g_TabControlHeight%
 
 GuiControl, Move, ICScriptHub:ModronTabControl, % "w" . g_TabControlWidth . " h" . g_TabControlHeight
 GUIFunctions.UseThemeBackgroundColor()
-Gui, ICScriptHub:Show, %  "x" . g_UserSettings[ "WindowXPosition" ] " y" . g_UserSettings[ "WindowYPosition" ] . " w" . g_TabControlWidth+5 . " h" . g_TabControlHeight, % "IC Script Hub" . (g_UserSettings[ "WindowTitle" ] ? (" - " .  g_UserSettings[ "WindowTitle" ]) : "") . "  (Loading...)"
+Gui, ICScriptHub:Show, %  "x" . g_UserSettings[ "WindowXPosition" ] " y" . g_UserSettings[ "WindowYPosition" ] . " w" . g_TabControlWidth+5 . " h" . g_TabControlHeight  . " NA", % "IC Script Hub" . (g_UserSettings[ "WindowTitle" ] ? (" - " .  g_UserSettings[ "WindowTitle" ]) : "") . "  (Loading...)" 
 GUIFunctions.UseThemeTitleBar("ICScriptHub")
 ;WinSet, Style, -0xC00000, A  ; Remove the active window's title bar (WS_CAPTION).
 
@@ -127,9 +128,13 @@ Reload_Clicked()
 Launch_Clicked()
 {
     programLoc := g_UserSettings[ "InstallPath" ]
+    runHidden := g_UserSettings[ "RunHidden" ]
     try
     {
-        Run, %programLoc%
+        if (runHidden)
+            Run, %programLoc%,, Hide
+        else
+            Run, %programLoc%
     }
     catch
     {
@@ -155,6 +160,7 @@ Launch_Macro_Clicked()
 ICScriptHubGuiClose()
 {
     MsgBox 4,, Are you sure you want to `exit?
+    ICScriptHubCleanGlobalSettingsFiles()
     IfMsgBox Yes
     {
         MiniScriptWarning()
@@ -162,6 +168,13 @@ ICScriptHubGuiClose()
     }
     IfMsgBox No
         return True
+}
+
+ICScriptHubCleanGlobalSettingsFiles()
+{
+    for k,v in g_globalTempSettingsFiles
+        if (FileExist(v))
+            FileDelete, %v%
 }
 
 ICScriptHubGuiSize(GuiHwnd, EventInfo, Width, Height)
@@ -197,7 +210,6 @@ HideToolTip()
     ToolTip
 }
 
-;#include %A_ScriptDir%\SharedFunctions\Windrag.ahk
 ; Shared Functions
 #include %A_ScriptDir%\SharedFunctions\SH_SharedFunctions.ahk
 #include %A_ScriptDir%\SharedFunctions\SH_ArrFnc.ahk
@@ -206,15 +218,11 @@ HideToolTip()
 #include %A_ScriptDir%\SharedFunctions\SH_UpdateClass.ahk
 #include *i %A_ScriptDir%\AddOns\AddOnsIncluded.ahk
 
-;#IfWinActive ahk_exe AutoHotkeyU64.exe
-;!LButton::WindowMouseDragMove()
-;^LButton::WindowMouseDragMove()
-
 BuildToolTips()
 if(IsObject(AddonManagement))
     AddonManagement.BuildToolTips()
 
-Gui, ICScriptHub:Show,, % "IC Script Hub" . (g_UserSettings[ "WindowTitle" ] ? (" - " .  g_UserSettings[ "WindowTitle" ]) : "")
+Gui, ICScriptHub:Show, NA, % "IC Script Hub" . (g_UserSettings[ "WindowTitle" ] ? (" - " .  g_UserSettings[ "WindowTitle" ]) : "")
 
 StopMiniscripts()
 {
@@ -259,4 +267,4 @@ MiniScriptWarning()
 
 ; Refresh GUI after all addons loaded.
 GuiControl, ICScriptHub:Move, ModronTabControl, % "w" . g_TabControlWidth . " h" . g_TabControlHeight
-Gui, ICScriptHub:show, % "w" . g_TabControlWidth+5 . " h" . g_TabControlHeight
+Gui, ICScriptHub:show, % "w" . g_TabControlWidth+5 . " h" . g_TabControlHeight . " NA"

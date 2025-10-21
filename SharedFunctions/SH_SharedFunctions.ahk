@@ -5,8 +5,6 @@ class SH_SharedFunctions
 {
     Hwnd := 0
     PID := 0
-    ErrorKeyDown := 0
-    ErrorKeyUp := 0
 
     ;Gets data from JSON file
     LoadObjectFromJSON( FileName )
@@ -32,11 +30,46 @@ class SH_SharedFunctions
         if (!objectJSON)
             return
         objectJSON := JSON.Beautify( objectJSON )
-        FileDelete, %FileName%
+        if(FileExist(FileName))
+            FileDelete, %FileName%
         FileAppend, %objectJSON%, %FileName%
         return
     }
 
+    ; Copies top level items in com object to new AHK object.
+    ComObjectCopy(comObj)
+    {
+        convertedObj := {}
+        for k,v in comObj
+            convertedObj[k] := comObj[k]
+        return convertedObj
+    }
+
+    ; Copies AHK object into COM object.
+    CopyToComObject(byref comObj, AHKObject)
+    {
+        size := AHKObject.Length()
+        loop %size%
+            comObj[A_Index] := AHKObject[A_Index]
+        return comObj
+    }
+
+    ; Removes any settings that are in loadedSettings that are not in expectedSettings.
+    DeleteExtraSettings(loadedSettings, expectedSettings)
+    {
+        needSave := false
+        for k, v in loadedSettings
+            if (!expectedSettings.HasKey(k))
+                needSave := True, loadedSettings.Delete(k)
+        ; Add missing settings
+        for k, v in expectedSettings
+            if (!loadedSettings.HasKey(k) || loadedSettings[k] == "")
+                needSave := true, loadedSettings[k] := expectedSettings[k]
+        if(needSave)
+            return loadedSettings
+        else
+            return ""
+    }
     
     ; Helper function to add commas every 3 digits for display purposes.
     AddThousandsSeperator(val)
@@ -60,13 +93,26 @@ class SH_SharedFunctions
         return SubStr(sciNote, 1, ePos) . (signExp=="+" ? "" : signExp) . postExp
     }
 
+    ArrSize(arr)
+    {
+        if (IsObject(arr))
+        {
+            currArrSize := arr.MaxIndex()
+            if (currArrSize == "")
+                return 0
+            return currArrSize
+        }
+        return 0
+    }
     ;====================================================
     ;Keyboard/Mouse input (and helper) functions
     ;====================================================
 
-    /*  DirectedInput - A function to send keyboard inputs to Idle Champions while in background.
+    /*  DirectedInput - A function to send keyboard inputs to a game that is in the background (if it supports it).
 
         Parameters:
+        hold - true for a key down, false to skip key down
+        release - true for a key up, false to skip key up
         s - The keyboard inputs to be sent to Idle Champions. Single Character string, or array of characters.
         Returns: Nothing
     */
@@ -99,83 +145,117 @@ class SH_SharedFunctions
         LRESULT SendMessage(in] HWND   hWnd, [in] UINT   Msg, [in] WPARAM wParam, [in] LPARAM lParam);
         HWND SetFocus([in, optional] HWND hWnd);
     */
-    DirectedInput(hold := 1, release := 1, s* )
+    DirectedInput(hold := 1, release := 1, values* )
     {
+        if (values == "") ; no input
+            return
+        else if (IsObject(values) AND (values.Count() == 0 OR (values[1] == "" AND values.Count() == 1))) ; no input
+            return
         Critical, On
-        ; TestVar := {}
-        ; for k,v in g_KeyPresses
-        ; {
-        ;     TestVar[k] := v
-        ; }
         timeout := 5000
-        directedInputStart := A_TickCount
         hwnd := this.Hwnd
         ControlFocus,, ahk_id %hwnd%
-        ;while (ErrorLevel AND A_TickCount - directedInputStart < timeout * 10)  ; testing reliability
-        ; if ErrorLevel
-        ;     ControlFocus,, ahk_id %hwnd%
-        values := s
         if(IsObject(values))
         {
-            if(hold)
+            for k, v in values
             {
-                for k, v in values
-                {
-                    g_InputsSent++
-                    ; if TestVar[v] == ""
-                    ;     TestVar[v] := 0
-                    ; TestVar[v] += 1
-                    key := g_KeyMap[v]
-                    sc := g_SCKeyMap[v]
-                    sc := sc << 16
-                    lparam := Format("0x{:X}", 0x0 | sc)
+                if (v == "")
+                    continue
+                key := g_KeyMap[v]
+                sc := g_SCKeyMap[v]
+                sc := sc << 16
+                lparam := Format("0x{:X}", 0x0 | sc)
+                if(hold)
                     SendMessage, 0x0100, %key%, %lparam%,, ahk_id %hwnd%,,,,%timeout%
-                    if ErrorLevel
-                        this.ErrorKeyDown++
-                    ;     PostMessage, 0x0100, %key%, 0,, ahk_id %hwnd%,
-                }
-            }
-            if(release)
-            {
-                for k, v in values
+                if(release)
                 {
-                    key := g_KeyMap[v]
-                    sc := g_SCKeyMap[v]
-                    sc := sc << 16
+                    if(hold)
+                        Sleep, 16
                     lparam := Format("0x{:X}", 0xC0000001 | sc)
                     SendMessage, 0x0101, %key%, %lparam%,, ahk_id %hwnd%,,,,%timeout%
-                    if ErrorLevel
-                        this.ErrorKeyUp++
-                    ;     PostMessage, 0x0101, %key%, 0xC0000001,, ahk_id %hwnd%,
                 }
+                Sleep, 16
             }
         }
         else
         {
             key := g_KeyMap[values]
-            sc := g_SCKeyMap[values] << 16
+            sc := g_SCKeyMap[values]
+            sc := sc << 16
             if(hold)
             {
-                g_InputsSent++
-                ; if TestVar[v] == ""
-                ;     TestVar[v] := 0
-                ; TestVar[v] += 1
-                
                 lparam := Format("0x{:X}", 0x0 | sc)
                 SendMessage, 0x0100, %key%, %lparam%,, ahk_id %hwnd%,,,,%timeout%
-                if ErrorLevel
-                    this.ErrorKeyDown++
             }
             if(release)
             {
+                if(hold)
+                    Sleep, 16
                 lparam := Format("0x{:X}", 0xC0000001 | sc)
                 SendMessage, 0x0101, %key%, %lparam%,, ahk_id %hwnd%,,,,%timeout%
             }
-            if ErrorLevel
-                this.ErrorKeyUp++
-            ;     PostMessage, 0x0101, %key%, 0xC0000001,, ahk_id %hwnd%,
         }
         Critical, Off
-        ; g_KeyPresses := TestVar
     }
+
+    ; ======================================================================================================================
+    ; GetCallStack([Report := 0]) - retrieves the current callstack.
+    ;
+    ; Returns an array of objects with the following keys:
+    ;     Called   -  the name of the called function/label
+    ;     Caller   -  the name of the function/label which called the function/label
+    ;     Line     -  the number of the line Called was called from
+    ;     File     -  the name of the file containing the line
+    ; The properties of the first object contain the currently executed line and file.
+    ;
+    ; The parameter Report may be set to one of the following values:
+    ;     0  -  return the stack array silently
+    ;     1  -  additionally show the values by MsgBox
+    ;     2  -  additionally send the values to the debugger by OutputDebug
+    ;     3  -  use both of the report options
+    ; ======================================================================================================================
+    GetCallStack(Report := 0) {
+    Local Stack := [], StackIndex := 0, E, M
+    While (E := Exception("", --StackIndex)).What <> StackIndex {
+        Stack[A_Index] := {Called: E.What, Caller: "Auto-Exec/Event", Line: E.Line, File: E.File}
+        If (A_Index > 1)
+            Stack[A_Index - 1].Caller := E.What
+    }
+    If (Report & 1) { ; MsgBox
+        M := ""
+        For Each, E In Stack
+            M .= E.Called . "  <<  called by " . E.Caller . " at line " . E.Line . " of " . E.File . "`r`n"
+        MsgBox, 0, Callstack, % M
+    }
+    If (Report & 2) ; OutputDebug
+        For Each, E In Stack
+            OutputDebug, %  "`r`n" . E.Called . " called by " . E.Caller . " at line " . E.Line . " of " . E.File
+    Return Stack
+    }
+
+    ; https://www.autohotkey.com/board/topic/30042-run-ahk-scripts-with-less-half-or-even-less-memory-usage/
+    EmptyMem(pid:="")
+    {
+        pid := pid == "" ? DllCall("GetCurrentProcessId") : pid
+        h:=DllCall("OpenProcess", "UInt", 0x001F0FFF, "Int", 0, "Int", pid)
+        DllCall("SetProcessWorkingSetSize", "UInt", h, "Int", -1, "Int", -1)
+        DllCall("CloseHandle", "Int", h)
+    }
+
+    GetProcessMemoryUsage(ProcessID := "")
+    {
+        if(ProcessID == "")
+            ProcessID := DllCall("GetCurrentProcessId")
+        static PMC_EX, size := NumPut(VarSetCapacity(PMC_EX, 8 + A_PtrSize * 9, 0), PMC_EX, "uint")
+
+        if (hProcess := DllCall("OpenProcess", "uint", 0x1000, "int", 0, "uint", ProcessID)) {
+            if !(DllCall("GetProcessMemoryInfo", "ptr", hProcess, "ptr", &PMC_EX, "uint", size))
+                if !(DllCall("psapi\GetProcessMemoryInfo", "ptr", hProcess, "ptr", &PMC_EX, "uint", size))
+                    return (ErrorLevel := 2) & 0, DllCall("CloseHandle", "ptr", hProcess)
+            DllCall("CloseHandle", "ptr", hProcess)
+            return Round(NumGet(PMC_EX, 8 + A_PtrSize * 8, "uptr") / 1024**2, 2)
+        }
+        return (ErrorLevel := 1) & 0
+    }
+
 }
